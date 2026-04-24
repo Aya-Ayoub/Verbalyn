@@ -1,0 +1,232 @@
+version: '3.9'
+
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  verbalyn-net:
+    driver: bridge
+
+# ─── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  mongo-data:
+  redis-data:
+  opensearch-data:
+  prometheus-data:
+  grafana-data:
+
+# ─── Services ─────────────────────────────────────────────────────────────────
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
+  mongo:
+    image: mongo:7
+    container_name: verbalyn-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    networks: [verbalyn-net]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-secret}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: verbalyn-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks: [verbalyn-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: verbalyn-opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASS:-Admin1234!}
+      - plugins.security.disabled=true
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks: [verbalyn-net]
+    ports:
+      - "9200:9200"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: verbalyn-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks: [verbalyn-net]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: verbalyn-kafka
+    restart: unless-stopped
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks: [verbalyn-net]
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Application Services ──────────────────────────────────────────────────
+
+  auth-service:
+    build: ./auth-service
+    container_name: verbalyn-auth
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      PORT: 3001
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      SESSION_SECRET: ${SESSION_SECRET:-changeme-in-prod}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:8000/auth/google/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+
+  user-service:
+    build: ./user-service
+    container_name: verbalyn-user
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+    environment:
+      PORT: 3002
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+
+  chat-service:
+    build: ./chat-service
+    container_name: verbalyn-chat
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      PORT: 3003
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+
+  notification-service:
+    build: ./notification-service
+    container_name: verbalyn-notification
+    restart: unless-stopped
+    depends_on:
+      kafka: { condition: service_healthy }
+    environment:
+      PORT: 3004
+      KAFKA_BROKERS: kafka:9092
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+
+  dashboard-service:
+    build: ./dashboard-service
+    container_name: verbalyn-dashboard
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+    environment:
+      PORT: 3005
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+
+  # ── API Gateway ───────────────────────────────────────────────────────────
+
+  kong:
+    image: kong:3.7-ubuntu
+    container_name: verbalyn-gateway
+    restart: unless-stopped
+    depends_on: [auth-service, user-service, chat-service, notification-service, dashboard-service]
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+    volumes:
+      - ./gateway/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "8000:8000"   # Proxy
+      - "8001:8001"   # Admin API
+    networks: [verbalyn-net]
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+
+  frontend:
+    build: ./frontend
+    container_name: verbalyn-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    networks: [verbalyn-net]
+
+  # ── Monitoring ────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: verbalyn-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [verbalyn-net]
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: verbalyn-grafana
+    restart: unless-stopped
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3010:3000"
+    networks: [verbalyn-net]
