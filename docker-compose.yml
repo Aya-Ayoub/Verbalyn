@@ -1,0 +1,119 @@
+networks:
+  verbalyn-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  mongo:
+    image: mongo:7
+    container_name: verbalyn-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    networks: [verbalyn-net]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-secret}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: verbalyn-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks: [verbalyn-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Your Services ──────────────────────────────────────────────────────────
+
+  auth-service:
+    build: ./auth-service
+    container_name: verbalyn-auth
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      PORT: 3001
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      SESSION_SECRET: ${SESSION_SECRET:-changeme-in-prod}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:8000/auth/google/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+    ports:
+      - "3001:3001"
+
+  user-service:
+    build: ./user-service
+    container_name: verbalyn-user
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+    environment:
+      PORT: 3002
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-secret}@mongo:27017/verbalyn?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-prod}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks: [verbalyn-net]
+    ports:
+      - "3002:3002"
+
+  frontend:
+    build: ./frontend
+    container_name: verbalyn-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    networks: [verbalyn-net]
+
+  # ── Monitoring (your part) ─────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: verbalyn-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [verbalyn-net]
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: verbalyn-grafana
+    restart: unless-stopped
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3010:3000"
+    networks: [verbalyn-net]
