@@ -1,43 +1,51 @@
-HEAD
 # Verbalyn
 
-#!/bin/bash
-set -e
+Real-time messaging platform built with a microservices architecture.
 
-echo "=== Verbalyn Deployment ==="
+## Features
 
-# Check .env exists
-if [ ! -f .env ]; then
-  echo "ERROR: .env file not found. Copy .env.example to .env and fill in your values."
-  exit 1
-fi
+- Google OAuth2 authentication
+- JWT authorization
+- Real-time messaging
+- Message editing & deletion
+- Chat history
+- RabbitMQ notifications
+- Redis caching
+- Monitoring with Prometheus & Grafana
 
-echo "Pulling latest images..."
-docker compose pull prometheus grafana node-exporter
+## Tech Stack
 
-echo "Building application services..."
-docker compose build --parallel auth-service user-service chat-service notification-service dashboard-service frontend
+- Go
+- Node.js
+- MongoDB
+- RabbitMQ
+- Redis
+- Docker
+- Kong
+- Prometheus
+- Grafana
 
-echo "Starting all services..."
-docker compose up -d
+## Architecture
 
-echo "Waiting for services to be healthy..."
-sleep 15
+Verbalyn uses:
+- Microservices architecture
+- RabbitMQ for asynchronous communication
 
-echo "=== Service Status ==="
-docker compose ps
+## Run Locally
 
-echo ""
-echo "=== Health Checks ==="
-for port in 3001 3002 3003 3004 3005; do
-  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$port/health)
-  echo "Port $port: $status"
-done
+```bash
+git clone https://github.com/Aya-Ayoub/Verbalyn.git
+cd Verbalyn
 
-echo ""
-echo "=== Verbalyn is running ==="
-echo "App:        http://localhost:5173"
-echo "Grafana:    http://localhost:3010"
-echo "Prometheus: http://localhost:9090"
-echo "RabbitMQ:   http://localhost:15672"
+docker compose up --build
+```
 
+## Monitoring
+
+- Prometheus metrics
+- Grafana dashboards
+
+## Contributors
+
+- Aya Ayoub
+- Nada Waleed
