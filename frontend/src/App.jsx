@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-const AUTH_BASE = 'http://localhost:3001';
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3002';
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:3003';
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Config
+const AUTH_BASE  = '';
+const USER_BASE  = '';
+const CHAT_BASE  = '';
+const NOTIF_BASE = '';
+const DASH_BASE  = '';
+const WS_BASE    = 'ws://localhost:3003';
+
+//Helpers
 const getToken = () => localStorage.getItem('token');
 const setToken = (t) => localStorage.setItem('token', t);
 const clearToken = () => localStorage.removeItem('token');
 
-const authFetch = (path, opts = {}) =>
-  fetch(`${API_BASE}${path}`, {
+const authFetch = (base, path, opts = {}) =>
+  fetch(`${base}${path}`, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
@@ -29,7 +33,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+//Styles
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
 
@@ -142,6 +146,7 @@ const css = `
     grid-template-rows: var(--header-h) 1fr;
     height: 100vh;
     animation: fadeIn .3s ease;
+    position: relative;
   }
 
   /* ── Header ── */
@@ -182,6 +187,77 @@ const css = `
   }
   .btn-icon:hover { color: var(--text); background: var(--surface2); }
 
+  /* ── Notification bell ── */
+  .notif-bell {
+    position: relative;
+    background: none; border: none; color: var(--text2);
+    cursor: pointer; padding: 6px; border-radius: 6px;
+    font-size: 1.1rem; transition: color .15s;
+    line-height: 1;
+  }
+  .notif-bell:hover { color: var(--text); }
+  .notif-badge {
+    position: absolute; top: -2px; right: -2px;
+    background: var(--accent2); color: #fff;
+    font-size: 0.6rem; font-weight: 700;
+    border-radius: 8px; padding: 1px 4px;
+    min-width: 16px; text-align: center;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+
+  /* ── Notification panel — fixed overlay, never inside the grid ── */
+  .notif-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .notif-panel {
+    position: absolute;
+    top: calc(var(--header-h) + 8px);
+    right: 16px;
+    width: 340px;
+    max-height: 480px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 8px 40px #0009;
+    pointer-events: all;
+    animation: fadeUp .18s ease;
+  }
+  .notif-panel-inner { padding: 14px; }
+  .notif-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .notif-header-title { font-size: 0.85rem; font-weight: 700; }
+  .notif-mark-all {
+    font-size: 0.72rem; color: var(--accent);
+    cursor: pointer; background: none; border: none;
+    font-family: var(--mono); padding: 2px 6px;
+    border-radius: 4px; transition: background .15s;
+  }
+  .notif-mark-all:hover { background: #7c6af715; }
+  .notif-empty {
+    color: var(--text2); font-size: 0.8rem;
+    font-family: var(--mono); padding: 20px 0;
+    text-align: center;
+  }
+  .notif-item {
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+    background: var(--surface2); cursor: pointer;
+    transition: background .15s; border-left: 3px solid transparent;
+  }
+  .notif-item:last-child { margin-bottom: 0; }
+  .notif-item:hover { background: var(--border); }
+  .notif-item.unread { border-left-color: var(--accent); }
+  .notif-item-title { font-size: 0.82rem; font-weight: 700; margin-bottom: 2px; }
+  .notif-item-body { font-size: 0.75rem; color: var(--text2); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notif-item-time { font-size: 0.68rem; color: var(--text2); margin-top: 4px; font-family: var(--mono); }
+
   /* ── Sidebar ── */
   .sidebar {
     border-right: 1px solid var(--border);
@@ -219,12 +295,6 @@ const css = `
   .room-item.active { color: var(--text); background: var(--surface2); }
   .room-hash { color: var(--text2); font-family: var(--mono); font-size: 0.9rem; }
   .room-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .unread-badge {
-    background: var(--accent); color: #fff;
-    font-size: 0.65rem; font-weight: 700;
-    border-radius: 10px; padding: 1px 6px;
-    min-width: 18px; text-align: center;
-  }
 
   /* ── Main content ── */
   .main { display: flex; flex-direction: column; overflow: hidden; }
@@ -248,11 +318,12 @@ const css = `
   .messages-area::-webkit-scrollbar-track { background: transparent; }
   .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-  .msg-group { display: flex; flex-direction: column; gap: 2px; }
   .msg-row {
+    position: relative;
     display: flex; align-items: flex-start; gap: 10px;
-    padding: 2px 8px; border-radius: 8px;
+    padding: 4px 8px; border-radius: 8px;
     transition: background .1s;
+    animation: slideIn .15s ease both;
   }
   .msg-row:hover { background: var(--surface2); }
   .msg-row.own { flex-direction: row-reverse; }
@@ -262,7 +333,14 @@ const css = `
     display: flex; align-items: center; justify-content: center;
     font-size: 0.75rem; font-weight: 700; color: var(--accent);
   }
-  .msg-body { max-width: 70%; display: flex; flex-direction: column; gap: 2px; }
+  .msg-body {
+    position: relative;
+    width: fit-content;
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .msg-meta {
     display: flex; align-items: baseline; gap: 8px;
     font-size: 0.72rem; color: var(--text2);
@@ -274,11 +352,80 @@ const css = `
     border-radius: 12px 12px 12px 4px;
     padding: 8px 12px; font-size: 0.9rem; line-height: 1.5;
     word-break: break-word;
+    position: relative;
   }
   .msg-row.own .msg-bubble {
     background: #7c6af720; border-color: var(--accent);
     border-radius: 12px 12px 4px 12px;
   }
+
+  /* ── Message actions (fix: opacity instead of display:none) ── */
+  .msg-actions {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 8px);
+    transform: translateY(-50%);
+
+    display: flex;
+    gap: 4px;
+
+    opacity: 0;
+    pointer-events: none;
+
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px 6px;
+
+    z-index: 20;
+    transition: opacity .15s ease;
+  }
+
+  .msg-row:hover .msg-actions {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .msg-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 4px 7px;
+    border-radius: 5px;
+    color: var(--text2);
+    transition: color .15s, background .15s;
+    font-family: var(--mono);
+    line-height: 1;
+  }
+  .msg-action-btn:hover { background: var(--surface2); color: var(--text); }
+  .msg-action-btn.danger:hover { color: var(--danger); background: #f76a6a15; }
+
+  /* ── Edit input ── */
+  .msg-edit-wrap {
+    display: flex; gap: 6px; align-items: flex-end; margin-top: 4px;
+  }
+  .msg-edit-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--accent);
+    border-radius: 8px; color: var(--text); font-family: var(--font);
+    font-size: 0.88rem; padding: 6px 10px; outline: none; resize: none;
+  }
+  .msg-edit-save {
+    background: var(--accent); border: none; border-radius: 6px;
+    color: #fff; font-family: var(--mono); font-size: 0.75rem;
+    font-weight: 700; padding: 5px 10px; cursor: pointer;
+  }
+  .msg-edit-save:hover { opacity: 0.85; }
+  .msg-edit-cancel {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text2); font-family: var(--mono); font-size: 0.75rem;
+    padding: 5px 10px; cursor: pointer;
+  }
+  .msg-edit-cancel:hover { border-color: var(--text2); color: var(--text); }
+  .msg-edited-tag {
+    font-size: 0.65rem; color: var(--text2); font-family: var(--mono);
+    margin-left: 6px; font-style: italic;
+  }
+
   .typing-indicator {
     font-size: 0.78rem; color: var(--text2); font-style: italic;
     padding: 4px 8px; font-family: var(--mono);
@@ -369,16 +516,14 @@ const css = `
   .error-msg { color: var(--danger); font-size: 0.8rem; font-family: var(--mono); margin-top: 8px; }
 
   /* ── Animations ── */
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeUp  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
-  .msg-row { animation: slideIn .15s ease both; }
   .empty-state { text-align: center; color: var(--text2); font-family: var(--mono); font-size: 0.85rem; margin: auto; padding: 40px; }
   .empty-state .big { font-size: 2.5rem; margin-bottom: 12px; }
 `;
 
-// ─── Google Icon SVG ──────────────────────────────────────────────────────────
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="google-icon">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -388,27 +533,21 @@ const GoogleIcon = () => (
   </svg>
 );
 
-// ─── ROOMS (mock — replace with API call in production) ──────────────────────
 const DEFAULT_ROOMS = [
   { id: 'general', name: 'general', desc: 'General chat' },
-  { id: 'random', name: 'random', desc: 'Off-topic' },
-  { id: 'dev', name: 'dev', desc: 'Engineering' },
-  { id: 'design', name: 'design', desc: 'Design & UX' },
+  { id: 'random',  name: 'random',  desc: 'Off-topic' },
+  { id: 'dev',     name: 'dev',     desc: 'Engineering' },
+  { id: 'design',  name: 'design',  desc: 'Design & UX' },
 ];
 
-// ─── Components ───────────────────────────────────────────────────────────────
-
+//Login
 function LoginScreen() {
-  const handleLogin = () => {
-    window.location.href = `${AUTH_BASE}/auth/google`;
-  };
-
   return (
     <div className="login-screen">
       <div className="login-card">
         <div className="login-logo">Verbalyn</div>
         <p className="login-tagline">// real-time chat, built to scale</p>
-        <button className="btn-google" onClick={handleLogin}>
+        <button className="btn-google" onClick={() => { window.location.href = `${AUTH_BASE}/auth/google`; }}>
           <GoogleIcon />
           Continue with Google
         </button>
@@ -417,43 +556,117 @@ function LoginScreen() {
   );
 }
 
-function ChatView({ room, user }) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [wsStatus, setWsStatus] = useState('disconnected');
-  const [typing, setTyping] = useState('');
-  const wsRef = useRef(null);
-  const bottomRef = useRef(null);
-  const inputRef = useRef(null);
+//Notification
+function NotificationsPanel({ onClose, onUnreadChange }) {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // WebSocket connection
+  useEffect(() => {
+    authFetch(NOTIF_BASE, '/notifications?limit=30')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d) {
+          setNotifications(d.notifications || []);
+          onUnreadChange(d.unreadCount ?? 0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const markAll = async () => {
+    await authFetch(NOTIF_BASE, '/notifications/read-all', { method: 'PATCH' }).catch(() => {});
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    onUnreadChange(0);
+  };
+
+  const markOne = async (id) => {
+    const notif = notifications.find((n) => n._id === id);
+    if (!notif || notif.read) return;
+    await authFetch(NOTIF_BASE, `/notifications/${id}`, { method: 'PATCH' }).catch(() => {});
+    setNotifications((prev) => prev.map((n) => n._id === id ? { ...n, read: true } : n));
+    onUnreadChange((c) => Math.max(0, c - 1));
+  };
+
+  const unread = notifications.filter((n) => !n.read).length;
+
+  return (
+    <div className="notif-overlay" onClick={onClose}>
+      <div className="notif-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="notif-panel-inner">
+          <div className="notif-header">
+            <span className="notif-header-title">🔔 Notifications {unread > 0 && `(${unread} unread)`}</span>
+            {unread > 0 && (
+              <button className="notif-mark-all" onClick={markAll}>mark all read</button>
+            )}
+          </div>
+
+          {loading && (
+            <div className="notif-empty">loading…</div>
+          )}
+
+          {!loading && notifications.length === 0 && (
+            <div className="notif-empty">No notifications yet</div>
+          )}
+
+          {notifications.map((n) => (
+            <div
+              key={n._id}
+              className={`notif-item ${!n.read ? 'unread' : ''}`}
+              onClick={() => markOne(n._id)}
+            >
+              <div className="notif-item-title">{n.title}</div>
+              {n.body && <div className="notif-item-body">{n.body}</div>}
+              <div className="notif-item-time">{timeAgo(n.createdAt)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+//Chat
+function ChatView({ room, user }) {
+  const [messages, setMessages]   = useState([]);
+  const [input, setInput]         = useState('');
+  const [wsStatus, setWsStatus]   = useState('disconnected');
+  const [typing, setTyping]       = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText]   = useState('');
+  const wsRef     = useRef(null);
+  const bottomRef = useRef(null);
+  const inputRef  = useRef(null);
+
   useEffect(() => {
     if (!room || !getToken()) return;
-    const ws = new WebSocket(`${WS_BASE}/chat?room=${room.id}&token=${getToken()}`);
-    wsRef.current = ws;
 
-    ws.onopen = () => setWsStatus('connected');
+    authFetch(CHAT_BASE, `/chat/messages?room=${room.id}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((msgs) => Array.isArray(msgs) && setMessages(msgs))
+      .catch(() => {});
+
+    const ws = new WebSocket(`${WS_BASE}/chat/ws?room=${room.id}&token=${getToken()}`);
+    wsRef.current = ws;
+    ws.onopen  = () => setWsStatus('connected');
     ws.onclose = () => setWsStatus('disconnected');
     ws.onerror = () => setWsStatus('disconnected');
-
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'message') {
           setMessages((prev) => [...prev, data.payload]);
         } else if (data.type === 'history') {
-          setMessages(data.payload);
+          setMessages(data.payload || []);
         } else if (data.type === 'typing') {
-          setTyping(data.payload.name);
+          setTyping(data.payload?.name || '');
           setTimeout(() => setTyping(''), 2000);
         }
-      } catch { /* ignore malformed */ }
+      } catch { /* ignore */ }
     };
-
     return () => ws.close();
   }, [room?.id]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -466,13 +679,46 @@ function ChatView({ room, user }) {
   }, [input]);
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'typing' }));
     }
+  };
+
+  const startEdit = (msg) => {
+    setEditingId(msg._id);
+    setEditText(msg.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const saveEdit = async (msgId) => {
+    if (!editText.trim()) return;
+    try {
+      const res = await authFetch(CHAT_BASE, `/chat/messages/${msgId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content: editText.trim() }),
+      });
+      if (res.ok) {
+        setMessages((prev) =>
+          prev.map((m) => m._id === msgId ? { ...m, content: editText.trim(), edited: true } : m)
+        );
+      }
+    } catch { /* ignore */ }
+    cancelEdit();
+  };
+
+  const deleteMessage = async (msgId) => {
+    if (!window.confirm('Delete this message?')) return;
+    try {
+      const res = await authFetch(CHAT_BASE, `/chat/messages/${msgId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMessages((prev) => prev.filter((m) => m._id !== msgId));
+      }
+    } catch { /* ignore */ }
   };
 
   if (!room) {
@@ -498,15 +744,73 @@ function ChatView({ room, user }) {
         {messages.map((msg, i) => {
           const isOwn = msg.userId === user?._id || msg.email === user?.email;
           const initials = (msg.name || msg.email || '?')[0].toUpperCase();
+          const isEditing = editingId === msg._id;
+
           return (
             <div key={msg._id || i} className={`msg-row ${isOwn ? 'own' : ''}`}>
               <div className="msg-avatar">{initials}</div>
               <div className="msg-body">
                 <div className="msg-meta">
-                  <span className="msg-sender">{isOwn ? 'You' : msg.name}</span>
+                  <span className="msg-sender">{isOwn ? 'You' : (msg.name || msg.email)}</span>
                   <span>{timeAgo(msg.createdAt || new Date())}</span>
+                  {msg.edited && <span className="msg-edited-tag">edited</span>}
                 </div>
-                <div className="msg-bubble">{msg.content}</div>
+
+              {isEditing ? (
+                <div className="msg-edit-wrap">
+                  <textarea
+                    className="msg-edit-input"
+                    rows={2}
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        saveEdit(msg._id);
+                      }
+                      if (e.key === 'Escape') cancelEdit();
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    className="msg-edit-save"
+                    onClick={() => saveEdit(msg._id)}
+                  >
+                    save
+                  </button>
+
+                  <button
+                    className="msg-edit-cancel"
+                    onClick={cancelEdit}
+                  >
+                    esc
+                  </button>
+                </div>
+              ) : (
+                <div className="msg-bubble">
+                  {msg.content}
+
+                  {isOwn && (
+                    <div className="msg-actions">
+                      <button
+                        className="msg-action-btn"
+                        onClick={() => startEdit(msg)}
+                        title="Edit"
+                      >
+                        ✏️
+                      </button>
+
+                      <button
+                        className="msg-action-btn danger"
+                        onClick={() => deleteMessage(msg._id)}
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               </div>
             </div>
           );
@@ -541,17 +845,18 @@ function ChatView({ room, user }) {
   );
 }
 
+//Dashboard
 function DashboardView() {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    authFetch('/dashboard/stats')
+    authFetch(DASH_BASE, '/dashboard/stats')
       .then((r) => r.ok ? r.json() : null)
       .then((data) => data && setStats(data))
       .catch(() => {});
   }, []);
 
-  const s = stats || { totalMessages: 0, activeUsers: 0, totalRooms: 4, uptime: '99.9%' };
+  const s = stats || { totalMessages: 0, activeUsers: 0, totalRooms: 4, uptime: '—' };
 
   return (
     <div className="dashboard">
@@ -560,54 +865,64 @@ function DashboardView() {
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Total Messages</div>
-          <div className="stat-value accent">{s.totalMessages?.toLocaleString?.() ?? s.totalMessages}</div>
+          <div className="stat-value accent">{(s.totalMessages ?? 0).toLocaleString()}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Active Users</div>
-          <div className="stat-value accent2">{s.activeUsers}</div>
+          <div className="stat-label">Active Users (24h)</div>
+          <div className="stat-value accent2">{s.activeUsers ?? 0}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Rooms</div>
-          <div className="stat-value accent3">{s.totalRooms}</div>
+          <div className="stat-label">Active Rooms</div>
+          <div className="stat-value accent3">{s.totalRooms ?? 0}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Messages (24h)</div>
+          <div className="stat-value">{(s.messagesLast24h ?? 0).toLocaleString()}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Uptime</div>
-          <div className="stat-value">{s.uptime}</div>
+          <div className="stat-value" style={{ fontSize: '1.4rem' }}>{s.uptime ?? '—'}</div>
         </div>
       </div>
+      {s.roomActivity?.length > 0 && (
+        <>
+          <h3 style={{ marginBottom: 12, fontSize: '1rem', fontWeight: 700, color: 'var(--text2)' }}>TOP ROOMS (24h)</h3>
+          <div className="stats-grid">
+            {s.roomActivity.map((r) => (
+              <div className="stat-card" key={r.room}>
+                <div className="stat-label">#{r.room}</div>
+                <div className="stat-value accent">{r.messages}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <p style={{ color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '0.78rem' }}>
-        Full metrics available in Grafana → <code style={{ color: 'var(--accent)' }}>localhost:3010</code>
+        Full metrics → <code style={{ color: 'var(--accent)' }}>localhost:3010</code> (Grafana)
       </p>
     </div>
   );
 }
 
+//Profile
 function ProfileView({ user, onUpdate }) {
-  const [name, setName] = useState(user?.name || '');
-  const [bio, setBio] = useState(user?.bio || '');
+  const [name, setName]     = useState(user?.name || '');
+  const [bio, setBio]       = useState(user?.bio  || '');
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [err, setErr] = useState('');
+  const [msg, setMsg]       = useState('');
+  const [err, setErr]       = useState('');
 
   const save = async () => {
     setSaving(true); setMsg(''); setErr('');
     try {
-      const res = await authFetch('/users/profile', {
+      const res = await authFetch(USER_BASE, '/users/profile', {
         method: 'PATCH',
         body: JSON.stringify({ name, bio }),
       });
-      if (res.ok) {
-        const updated = await res.json();
-        onUpdate(updated);
-        setMsg('Profile updated!');
-      } else {
-        setErr('Failed to save. Try again.');
-      }
-    } catch {
-      setErr('Network error.');
-    } finally {
-      setSaving(false);
-    }
+      if (res.ok) { onUpdate(await res.json()); setMsg('Profile updated!'); }
+      else setErr('Failed to save.');
+    } catch { setErr('Network error.'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -634,34 +949,49 @@ function ProfileView({ user, onUpdate }) {
   );
 }
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+//App
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('chat'); // chat | dashboard | profile
+  const [user, setUser]             = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [view, setView]             = useState('chat');
   const [activeRoom, setActiveRoom] = useState(DEFAULT_ROOMS[0]);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Handle token from OAuth redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const t = params.get('token');
-    if (t) {
-      setToken(t);
-      window.history.replaceState({}, '', '/');
-    }
+    if (t) { setToken(t); window.history.replaceState({}, '', '/'); }
 
     const token = getToken();
     if (!token) { setLoading(false); return; }
 
-    authFetch('/users/profile')
+    authFetch(USER_BASE, '/users/profile')
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data) setUser(data); else clearToken(); })
       .catch(() => clearToken())
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCount = () => {
+      authFetch(NOTIF_BASE, '/notifications/count')
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d != null) setUnreadCount(d.unreadCount ?? 0); })
+        .catch(() => {});
+    };
+
+    fetchCount();
+    const id = setInterval(fetchCount, 15_000);
+    return () => clearInterval(id);
+  }, [user]);
+
+  const switchView = (v) => { setView(v); setShowNotifs(false); };
+
   const logout = async () => {
-    await authFetch('/auth/logout', { method: 'POST' }).catch(() => {});
+    await authFetch(AUTH_BASE, '/auth/logout', { method: 'POST' }).catch(() => {});
     clearToken();
     setUser(null);
   };
@@ -671,55 +1001,61 @@ export default function App() {
       <>
         <style>{css}</style>
         <div className="login-screen">
-          <div style={{ color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '0.85rem' }}>
-            loading…
-          </div>
+          <div style={{ color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '0.85rem' }}>loading…</div>
         </div>
       </>
     );
   }
 
-  if (!user) {
-    return (
-      <>
-        <style>{css}</style>
-        <LoginScreen />
-      </>
-    );
-  }
+  if (!user) return <><style>{css}</style><LoginScreen /></>;
 
   const initials = (user.name || user.email || '?')[0].toUpperCase();
 
   return (
     <>
       <style>{css}</style>
+
+      {showNotifs && (
+        <NotificationsPanel
+          onClose={() => setShowNotifs(false)}
+          onUnreadChange={setUnreadCount}
+        />
+      )}
+
       <div className="app-shell">
-        {/* Header */}
         <header className="header">
           <span className="header-logo">Verbalyn</span>
           <div className="header-actions">
-            <div className="avatar">{user.avatar
-              ? <img src={user.avatar} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : initials}
+            <button
+              className="notif-bell"
+              onClick={() => setShowNotifs((v) => !v)}
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+            </button>
+            <div className="avatar">
+              {user.avatar
+                ? <img src={user.avatar} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : initials}
             </div>
             <button className="btn-icon" title="Logout" onClick={logout}>⏻</button>
           </div>
         </header>
 
-        {/* Sidebar */}
         <aside className="sidebar">
           <nav className="sidebar-nav">
-            <button className={`nav-item ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
+            <button className={`nav-item ${view === 'chat'      ? 'active' : ''}`} onClick={() => switchView('chat')}>
               <span className="nav-icon">💬</span> Chat
             </button>
-            <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+            <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => switchView('dashboard')}>
               <span className="nav-icon">📊</span> Dashboard
             </button>
-            <button className={`nav-item ${view === 'profile' ? 'active' : ''}`} onClick={() => setView('profile')}>
+            <button className={`nav-item ${view === 'profile'   ? 'active' : ''}`} onClick={() => switchView('profile')}>
               <span className="nav-icon">👤</span> Profile
             </button>
           </nav>
-
           {view === 'chat' && (
             <>
               <div className="sidebar-section-label">Rooms</div>
@@ -728,7 +1064,7 @@ export default function App() {
                   <button
                     key={room.id}
                     className={`room-item ${activeRoom?.id === room.id ? 'active' : ''}`}
-                    onClick={() => setActiveRoom(room)}
+                    onClick={() => { setActiveRoom(room); setShowNotifs(false); }}
                   >
                     <span className="room-hash">#</span>
                     <span className="room-name">{room.name}</span>
@@ -739,10 +1075,9 @@ export default function App() {
           )}
         </aside>
 
-        {/* Main */}
-        {view === 'chat' && <ChatView room={activeRoom} user={user} />}
+        {view === 'chat'      && <ChatView room={activeRoom} user={user} />}
         {view === 'dashboard' && <DashboardView />}
-        {view === 'profile' && <ProfileView user={user} onUpdate={setUser} />}
+        {view === 'profile'   && <ProfileView user={user} onUpdate={setUser} />}
       </div>
     </>
   );

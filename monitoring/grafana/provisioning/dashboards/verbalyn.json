@@ -1,0 +1,130 @@
+{
+  "id": null,
+  "uid": "verbalyn-main",
+  "title": "Verbalyn — System Overview",
+  "tags": ["verbalyn"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Health (up = 1)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{ job }}",
+          "datasource": "Prometheus"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "HTTP Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by(job) (rate(http_request_duration_seconds_count[1m]))",
+          "legendFormat": "{{ job }}",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "p95 Response Time (s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by(job, le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ job }} p95",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active WebSocket Connections",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 12, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "ws_active_connections",
+          "legendFormat": "WebSocket connections",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Messages Sent (total)",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 12, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "chat_messages_sent_total",
+          "legendFormat": "Messages",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "CPU Usage (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+          "legendFormat": "CPU %",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Memory Usage (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "legendFormat": "Memory %",
+          "datasource": "Prometheus"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Error Rate by Service",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by(job) (rate(http_request_duration_seconds_count{status_code=~\"5..\"}[5m]))",
+          "legendFormat": "{{ job }} 5xx",
+          "datasource": "Prometheus"
+        }
+      ]
+    }
+  ],
+  "time": { "from": "now-1h", "to": "now" }
+}

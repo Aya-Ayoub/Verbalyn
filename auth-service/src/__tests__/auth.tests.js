@@ -3,7 +3,7 @@
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
-// ─── Env setup (before requiring app) ────────────────────────────────────────
+//Env setup
 process.env.JWT_SECRET = 'test-secret';
 process.env.SESSION_SECRET = 'test-session-secret';
 process.env.MONGO_URI = 'mongodb://localhost:27017/test';
@@ -11,7 +11,7 @@ process.env.GOOGLE_CLIENT_ID = 'mock-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'mock-secret';
 process.env.NODE_ENV = 'test';
 
-// ─── Mock mongoose ────────────────────────────────────────────────────────────
+//Mock mongoose 
 const mockUser = {
   _id: 'user-id-123',
   googleId: 'google-123',
@@ -32,7 +32,7 @@ jest.mock('mongoose', () => ({
   })),
 }));
 
-// ─── Mock redis ───────────────────────────────────────────────────────────────
+//Mock redis
 jest.mock('redis', () => ({
   createClient: jest.fn(() => ({
     connect: jest.fn().mockResolvedValue(undefined),
@@ -44,7 +44,7 @@ jest.mock('redis', () => ({
   })),
 }));
 
-// ─── Mock passport-google-oauth20 ────────────────────────────────────────────
+//Mock passportoauth20
 jest.mock('passport-google-oauth20', () => ({
   Strategy: class {
     constructor(_opts, _verify) {}
@@ -61,7 +61,7 @@ const validToken = jwt.sign(
   { expiresIn: '1h' }
 );
 
-// ─── /health ─────────────────────────────────────────────────────────────────
+//health
 describe('GET /health', () => {
   it('returns 200 with status ok', async () => {
     const res = await request(app).get('/health');
@@ -71,7 +71,7 @@ describe('GET /health', () => {
   });
 });
 
-// ─── /metrics ────────────────────────────────────────────────────────────────
+//metrics 
 describe('GET /metrics', () => {
   it('returns prometheus metrics', async () => {
     const res = await request(app).get('/metrics');
@@ -80,7 +80,7 @@ describe('GET /metrics', () => {
   });
 });
 
-// ─── /auth/verify ────────────────────────────────────────────────────────────
+//auth/verify
 describe('POST /auth/verify', () => {
   it('returns 401 when no token provided', async () => {
     const res = await request(app).post('/auth/verify');
@@ -105,7 +105,7 @@ describe('POST /auth/verify', () => {
   });
 });
 
-// ─── /auth/logout ─────────────────────────────────────────────────────────────
+//auth/logout
 describe('POST /auth/logout', () => {
   it('returns 200 and logout message', async () => {
     const res = await request(app)

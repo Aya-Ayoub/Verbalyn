@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # ─── Auth Service ───────────────────────────────────────────────────────────
+  
   test-auth:
     name: Auth Service Tests
     runs-on: ubuntu-latest
@@ -29,7 +29,7 @@ jobs:
           name: auth-coverage
           path: auth-service/coverage/
 
-  # ─── User Service ───────────────────────────────────────────────────────────
+
   test-user:
     name: User Service Tests
     runs-on: ubuntu-latest
@@ -51,24 +51,59 @@ jobs:
           name: user-coverage
           path: user-service/coverage/
 
-  # ─── Chat Service ───────────────────────────────────────────────────────────
+ 
   test-chat:
-    name: Chat Service Tests
+    name: Chat Service Tests (Go)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: chat-service
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: chat-service/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Run tests with coverage
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Check coverage threshold (>= 70%)
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+          echo "Coverage: ${COVERAGE}%"
+          awk "BEGIN {exit ($COVERAGE < 70)}" || (echo "Coverage below 70%" && exit 1)
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-coverage
+          path: chat-service/coverage.out
+      - name: Build binary
+        run: CGO_ENABLED=0 GOOS=linux go build -o chat-service-bin .
+
+
+  test-notification:
+    name: Notification Service Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: notification-service
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: chat-service/package-lock.json
+          cache-dependency-path: notification-service/package-lock.json
       - run: npm ci
       - run: npm test -- --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: notification-coverage
+          path: notification-service/coverage/
 
-  # ─── Dashboard Service ──────────────────────────────────────────────────────
+
   test-dashboard:
     name: Dashboard Service Tests
     runs-on: ubuntu-latest
@@ -84,8 +119,13 @@ jobs:
           cache-dependency-path: dashboard-service/package-lock.json
       - run: npm ci
       - run: npm test -- --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-coverage
+          path: dashboard-service/coverage/
 
-  # ─── Frontend Build ─────────────────────────────────────────────────────────
+ 
   build-frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
@@ -107,14 +147,21 @@ jobs:
           name: frontend-dist
           path: frontend/dist/
 
-  # ─── Docker Build Check ─────────────────────────────────────────────────────
+ 
   docker-build:
     name: Docker Compose Build
     runs-on: ubuntu-latest
-    needs: [test-auth, test-user, build-frontend]
+    needs: [test-auth, test-user, test-chat, test-notification, test-dashboard, build-frontend]
     steps:
       - uses: actions/checkout@v4
       - name: Copy env
         run: cp .env.example .env
-      - name: Build images
-        run: docker compose build --parallel auth-service user-service frontend
+      - name: Build all images
+        run: |
+          docker compose build --parallel \
+            auth-service \
+            user-service \
+            chat-service \
+            notification-service \
+            dashboard-service \
+            frontend

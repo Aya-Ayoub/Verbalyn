@@ -12,7 +12,7 @@ const mongoose = require('mongoose');
 const promClient = require('prom-client');
 const winston = require('winston');
 
-// ─── Logger ──────────────────────────────────────────────────────────────────
+//Logger
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -22,7 +22,7 @@ const logger = winston.createLogger({
   transports: [new winston.transports.Console()],
 });
 
-// ─── Metrics ─────────────────────────────────────────────────────────────────
+//Metrics
 const register = new promClient.Registry();
 promClient.collectDefaultMetrics({ register });
 
@@ -34,14 +34,14 @@ const httpRequestDuration = new promClient.Histogram({
   registers: [register],
 });
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+
 const app = express();
 app.use(express.json());
 app.use(cors({
   origin: 'http://localhost:5173',
   credentials: true,
 }));
-// ─── Redis ───────────────────────────────────────────────────────────────────
+// Redis
 let redisClient;
 (async () => {
   redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema(
 );
 const User = mongoose.model('User', userSchema);
 
-// ─── Session ─────────────────────────────────────────────────────────────────
+//Session
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'dev-secret',
@@ -81,7 +81,7 @@ app.use(
   })
 );
 
-// ─── Passport / Google OAuth2 ────────────────────────────────────────────────
+//Passport /Google OAuth2
 passport.use(
   new GoogleStrategy(
     {
@@ -122,13 +122,13 @@ passport.deserializeUser(async (id, done) => {
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ─── Middleware: metrics instrumentation ─────────────────────────────────────
+
 app.use((req, _res, next) => {
   req._startTime = Date.now();
   next();
 });
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+//Routes
 
 // Health
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'auth-service' }));
@@ -160,7 +160,7 @@ app.get(
         expiresIn: '7d',
       });
 
-      // Cache session in Redis
+      //Cache session in Redis
       if (redisClient?.isReady) {
         await redisClient.setEx(`session:${req.user._id}`, 7 * 24 * 3600, token);
       }
@@ -174,7 +174,7 @@ app.get(
   }
 );
 
-// Token verification (used by other services / gateway)
+//Token verification
 app.post('/auth/verify', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -184,7 +184,7 @@ app.post('/auth/verify', async (req, res) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret');
 
-    // Optional: check Redis blacklist
+    //blacklist
     if (redisClient?.isReady) {
       const blacklisted = await redisClient.get(`blacklist:${token}`);
       if (blacklisted) return res.status(401).json({ error: 'Token revoked' });
@@ -211,7 +211,7 @@ app.post('/auth/logout', async (req, res) => {
   req.logout(() => res.json({ message: 'Logged out' }));
 });
 
-// ─── Metrics: record duration after response ──────────────────────────────────
+//record duration after response
 app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = (Date.now() - req._startTime) / 1000;
@@ -220,7 +220,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Start ───────────────────────────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3001;
 if (require.main === module) {
   app.listen(PORT, () => logger.info(`auth-service listening on :${PORT}`));

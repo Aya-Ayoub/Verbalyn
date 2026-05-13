@@ -7,14 +7,14 @@ const mongoose = require('mongoose');
 const promClient = require('prom-client');
 const winston = require('winston');
 
-// ─── Logger ──────────────────────────────────────────────────────────────────
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
   transports: [new winston.transports.Console()],
 });
 
-// ─── Metrics ─────────────────────────────────────────────────────────────────
+//Metrics
 const register = new promClient.Registry();
 promClient.collectDefaultMetrics({ register });
 
@@ -25,7 +25,7 @@ const httpRequestDuration = new promClient.Histogram({
   registers: [register],
 });
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+//App
 const app = express();
 app.use(express.json());
 app.use(cors({
@@ -33,7 +33,7 @@ app.use(cors({
   credentials: true,
 }));
 
-// ─── MongoDB ─────────────────────────────────────────────────────────────────
+//MongoDB
 mongoose
   .connect(process.env.MONGO_URI || 'mongodb://localhost:27017/verbalyn')
   .then(() => logger.info('MongoDB connected'))
@@ -51,7 +51,7 @@ const userSchema = new mongoose.Schema(
 );
 const User = mongoose.model('User', userSchema);
 
-// ─── Auth middleware ──────────────────────────────────────────────────────────
+//Auth middleware
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -65,13 +65,13 @@ function authenticate(req, res, next) {
   }
 }
 
-// ─── Metrics middleware ───────────────────────────────────────────────────────
+//Metrics middleware
 app.use((req, _res, next) => {
   req._startTime = Date.now();
   next();
 });
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+//Routes
 
 // Health
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'user-service' }));
@@ -117,7 +117,7 @@ app.patch('/users/profile', authenticate, async (req, res) => {
   }
 });
 
-// GET user by ID (public, limited fields)
+
 app.get('/users/:id', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('name bio avatar email');
@@ -129,7 +129,7 @@ app.get('/users/:id', authenticate, async (req, res) => {
   }
 });
 
-// GET users list (search)
+
 app.get('/users', authenticate, async (req, res) => {
   try {
     const { q, limit = 20, skip = 0 } = req.query;
@@ -145,7 +145,7 @@ app.get('/users', authenticate, async (req, res) => {
   }
 });
 
-// DELETE my account
+
 app.delete('/users/profile', authenticate, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.user.userId);
@@ -157,7 +157,7 @@ app.delete('/users/profile', authenticate, async (req, res) => {
   }
 });
 
-// ─── Metrics: record duration ─────────────────────────────────────────────────
+
 app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = (Date.now() - req._startTime) / 1000;
@@ -168,7 +168,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Start ───────────────────────────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3002;
 if (require.main === module) {
   app.listen(PORT, () => logger.info(`user-service listening on :${PORT}`));

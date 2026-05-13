@@ -1,7 +1,6 @@
 _format_version: "3.0"
 _transform: true
 
-# ─── Services ────────────────────────────────────────────────────────────────
 services:
   - name: auth-service
     url: http://auth-service:3001
@@ -83,7 +82,7 @@ services:
           secret_is_base64: false
           key_claim_name: userId
 
-# ─── Global Plugins ──────────────────────────────────────────────────────────
+
 plugins:
   - name: rate-limiting
     config:
