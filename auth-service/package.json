@@ -1,0 +1,28 @@
+{
+  "name": "auth-service",
+  "version": "1.0.0",
+  "description": "Verbalyn authentication service — Google OAuth2 + JWT",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --forceExit --testTimeout=10000"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "passport": "^0.6.0",
+    "passport-google-oauth20": "^2.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.4",
+    "redis": "^4.6.13",
+    "prom-client": "^15.1.2",
+    "winston": "^3.13.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "nodemon": "^3.1.0"
+  }
+}

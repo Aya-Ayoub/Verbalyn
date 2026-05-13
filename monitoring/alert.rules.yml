@@ -1,0 +1,59 @@
+groups:
+  - name: verbalyn_alerts
+    rules:
+
+      #availability
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+
+      #High error rate
+      - alert: HighErrorRate
+        expr: |
+          rate(http_request_duration_seconds_count{status_code=~"5.."}[5m])
+          /
+          rate(http_request_duration_seconds_count[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate > 5% for the last 2 minutes."
+
+      # Slow responses
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow p95 response time on {{ $labels.job }}"
+          description: "p95 latency exceeds 500ms for 5 minutes."
+
+      #CPU
+      - alert: HighCPU
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU usage > 80% for 5 minutes."
+
+      # memory
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.instance }}"
+          description: "Memory usage > 85% for 5 minutes."

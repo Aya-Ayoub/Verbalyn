@@ -1,0 +1,131 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: auth-service
+    url: http://auth-service:3001
+    connect_timeout: 5000
+    read_timeout: 10000
+    retries: 3
+    routes:
+      - name: auth-routes
+        paths:
+          - /auth
+        strip_path: false
+        methods: [GET, POST]
+
+  - name: user-service
+    url: http://user-service:3002
+    connect_timeout: 5000
+    read_timeout: 10000
+    retries: 3
+    routes:
+      - name: user-routes
+        paths:
+          - /users
+        strip_path: false
+        methods: [GET, POST, PATCH, DELETE]
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          key_claim_name: userId
+
+  - name: chat-service
+    url: http://chat-service:3003
+    connect_timeout: 5000
+    read_timeout: 15000
+    retries: 3
+    routes:
+      - name: chat-routes
+        paths:
+          - /chat
+        strip_path: false
+        methods: [GET, POST, DELETE]
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          key_claim_name: userId
+
+  - name: notification-service
+    url: http://notification-service:3004
+    connect_timeout: 5000
+    read_timeout: 10000
+    retries: 3
+    routes:
+      - name: notification-routes
+        paths:
+          - /notifications
+        strip_path: false
+        methods: [GET, POST, PATCH]
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          key_claim_name: userId
+
+  - name: dashboard-service
+    url: http://dashboard-service:3005
+    connect_timeout: 5000
+    read_timeout: 10000
+    retries: 3
+    routes:
+      - name: dashboard-routes
+        paths:
+          - /dashboard
+        strip_path: false
+        methods: [GET]
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          key_claim_name: userId
+
+
+plugins:
+  - name: rate-limiting
+    config:
+      minute: 120
+      policy: local
+      error_code: 429
+      error_message: "Rate limit exceeded. Please slow down."
+
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:5173"
+        - "https://verbalyn.app"
+      methods:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - X-Request-ID
+      exposed_headers:
+        - X-Request-ID
+      credentials: true
+      max_age: 3600
+
+  - name: request-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid
+
+  - name: prometheus
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  - name: http-log
+    config:
+      http_endpoint: http://opensearch:9200
+      method: POST
+      content_type: application/json
+      keepalive: 60000

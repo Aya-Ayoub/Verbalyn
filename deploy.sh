@@ -1,6 +1,3 @@
-HEAD
-# Verbalyn
-
 #!/bin/bash
 set -e
 
@@ -40,4 +37,3 @@ echo "App:        http://localhost:5173"
 echo "Grafana:    http://localhost:3010"
 echo "Prometheus: http://localhost:9090"
 echo "RabbitMQ:   http://localhost:15672"
-
